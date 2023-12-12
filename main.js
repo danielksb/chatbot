@@ -10,12 +10,16 @@ const PORT = process.env.PORT || 3000;
 
 // Serve static files from the "static" directory
 app.use(express.static(path.join(__dirname, 'static')));
+app.use(express.json());
 
 // Create a temporary directory for storing audio files
 const tempDir = path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir);
 }
+
+// Serve files from the "temp" folder under the URL "/audio/:filename"
+app.use('/audio', express.static(tempDir));
 
 // Multer setup for handling form data
 const storage = multer.memoryStorage(); // Store files in memory
@@ -125,6 +129,31 @@ app.get('/messages/:threadId', async (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+
+app.post('/text2speech', async (req, res) => {
+    const { text } = req.body;
+    if (!text) {
+        return res.status(400).json({ error: 'No text provided for text-to-speech conversion' });
+    }
+    try {
+        const client = createOpenAIClient();
+        const audioData = await client.audio.speech.create({
+            model: "tts-1",
+            voice: "alloy",
+            input: text,
+            response_format: "mp3"
+        })
+        const buffer = Buffer.from(await audioData.arrayBuffer());
+        const fileName = `audio_${Date.now()}.mp3`;
+        const filePath = path.join(tempDir, fileName);
+        await fs.promises.writeFile(filePath, buffer);
+        res.status(200).json({fileName: fileName});
+    } catch (error) {
+        console.error('ERROR', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
 
 // Start the server
 app.listen(PORT, () => {

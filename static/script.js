@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const recordButton = document.getElementById('recordButton');
     const resultContainer = document.getElementById('resultContainer');
-    const spokenTextElement = document.getElementById('spokenText');
+    const messageList = document.getElementById('messageList');
 
     recordButton.addEventListener('click', () => {
         if (!recorder) {
@@ -23,10 +23,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
                         // Send the audio data to the backend
                         sendAudioData(audioBlob)
-                            .then(response => {
-                                const spokenText = response.text;
-                                resultContainer.style.display = 'block';
-                                spokenTextElement.textContent = spokenText;
+                            .then(async response => {
+                                const threadId = response.threadId;
+                                const runId = response.runId;
+                                await waitForRunComplete(threadId, runId);
+                                retrieveAndDisplayMessages(threadId);
                             })
                             .catch(error => {
                                 console.error('Error sending audio data:', error);
@@ -53,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recorded_audio.wav');
 
-        return fetch('/speech2text', {
+        return fetch('/chat', {
             method: 'POST',
             body: formData,
         })
@@ -63,5 +64,71 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             return response.json();
         });
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function waitForRunComplete(threadId, runId) {
+        let run = await retrieveRun(threadId, runId);
+        while (run.status !== 'completed') {
+            await sleep(1000);
+            run = await retrieveRun(threadId, runId);
+            console.debug(`run status for ${threadId}/${runId}: %s`, run.status);
+        }
+    } 
+
+    function retrieveRun(threadId, runId) {
+        return fetch(`/messages/${threadId}/${runId}`, {
+            method: 'GET'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .catch(error => {
+            console.error(`Error retrieving run status for ${threadId}/${runId}:`, error);
+        });
+    }
+
+    function retrieveAndDisplayMessages(threadId) {
+        return fetch(`/messages/${threadId}`, {
+            method: 'GET'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(messages => {
+            console.log(messages);
+            updateMessageList(messages);
+        })
+        .catch(error => {
+            console.error(`Error retrieving messages for ${threadId}:`, error);
+        });
+    }
+
+    // Function to update the message list in the UI
+    function updateMessageList(messages) {
+        // Clear existing messages
+        messageList.innerHTML = '';
+
+        // Append new messages to the list
+        for (let msg of messages.data) {
+            const role = msg.role;
+            for (let content of msg.content) {
+                if (content.type === "text") {
+                    const listItem = document.createElement('li');
+                    const text = content.text.value;
+                    listItem.textContent = `${role}: ${text}`;
+                    messageList.appendChild(listItem);
+                }
+            }
+        }
     }
 });

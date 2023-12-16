@@ -142,7 +142,7 @@ app.post('/text2speech', async (req, res) => {
         const client = createOpenAIClient();
         const audioData = await client.audio.speech.create({
             model: "tts-1",
-            voice: "alloy",
+            voice: "nova",
             input: text,
             response_format: "mp3"
         })

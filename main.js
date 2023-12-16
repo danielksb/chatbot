@@ -186,11 +186,3 @@ async function convertSpeechToText(client, audioData) {
         console.log("INFO", transcription)
     return transcription.text;
 }
-
-/**
- * Sends a prompt to the chat model
- * @param {string} prompt User input for the model
- */
-async function sendPromptToModel(prompt) {
-
-}

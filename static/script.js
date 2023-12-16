@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let recorder;
 
     const recordButton = document.getElementById('recordButton');
-    const resultContainer = document.getElementById('resultContainer');
     const messageList = document.getElementById('messageList');
 
     recordButton.addEventListener('click', () => {
@@ -18,21 +17,19 @@ document.addEventListener('DOMContentLoaded', function () {
                         }
                     };
 
-                    recorder.onstop = () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-
-                        // Send the audio data to the backend
-                        sendAudioData(audioBlob)
-                            .then(async response => {
-                                const threadId = response.threadId;
-                                const runId = response.runId;
-                                await waitForRunComplete(threadId, runId);
-                                retrieveAndDisplayMessages(threadId);
-                            })
-                            .catch(error => {
-                                console.error('Error sending audio data:', error);
-                            });
-
+                    recorder.onstop = async () => {
+                        // Send the audio data to the backend and handle response
+                        try {
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                            const response = await sendAudioData(audioBlob);
+                            const threadId = response.threadId;
+                            const runId = response.runId;
+                            await waitForRunComplete(threadId, runId);
+                            await retrieveAndDisplayMessages(threadId);
+                        } catch(error) {
+                            console.error('Error handling audio data:', error);
+                        }
+                        
                         // Reset recorder and audioChunks
                         recorder = null;
                     };
@@ -50,20 +47,18 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Function to send audio data to the backend
-    function sendAudioData(audioBlob) {
+    async function sendAudioData(audioBlob) {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recorded_audio.wav');
 
-        return fetch('/chat', {
+        const response = await fetch('/chat', {
             method: 'POST',
             body: formData,
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            return response.json();
         });
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return await response.json();
     }
 
     function sleep(ms) {
@@ -79,42 +74,38 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     } 
 
-    function retrieveRun(threadId, runId) {
-        return fetch(`/messages/${threadId}/${runId}`, {
-            method: 'GET'
-        })
-        .then(response => {
+    async function retrieveRun(threadId, runId) {
+        try {
+            const response = await fetch(`/messages/${threadId}/${runId}`, {
+                method: 'GET'
+            });
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                throw new Error(`Cannot retrieve run data! Status: ${response.status}`);
             }
-            return response.json();
-        })
-        .catch(error => {
+            return await response.json();
+        } catch (error) {
             console.error(`Error retrieving run status for ${threadId}/${runId}:`, error);
-        });
+        }
     }
 
-    function retrieveAndDisplayMessages(threadId) {
-        return fetch(`/messages/${threadId}`, {
-            method: 'GET'
-        })
-        .then(response => {
+    async function retrieveAndDisplayMessages(threadId) {
+        try {
+            const response = await fetch(`/messages/${threadId}`, {
+                method: 'GET'
+            });
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                throw new Error(`Cannot retrieve messages! Status: ${response.status}`);
             }
-            return response.json();
-        })
-        .then(messages => {
+            const messages = await response.json();
             console.log(messages);
             updateMessageList(messages);
-        })
-        .catch(error => {
+        } catch (error) {
             console.error(`Error retrieving messages for ${threadId}:`, error);
-        });
+        }
     }
 
     // Function to update the message list in the UI
-    function updateMessageList(messages) {
+    async function updateMessageList(messages) {
         // Clear existing messages
         messageList.innerHTML = '';
 
@@ -123,12 +114,44 @@ document.addEventListener('DOMContentLoaded', function () {
             const role = msg.role;
             for (let content of msg.content) {
                 if (content.type === "text") {
-                    const listItem = document.createElement('li');
                     const text = content.text.value;
-                    listItem.textContent = `${role}: ${text}`;
+                    const listItem = document.createElement('li');
+
+                    const templateName = role;
+                    const template = document.getElementById(templateName);
+                    const clone = template.content.cloneNode(true);
+                    const roleNode = clone.querySelector('b');
+                    const roleText = document.createTextNode(role);
+                    roleNode.appendChild(roleText);
+                    const paragraphNode = clone.querySelector('p');
+                    const textNode = document.createTextNode(text);
+                    paragraphNode.appendChild(textNode);
+
+                    if (role === 'assistant') {
+                        playAudioResponse(listItem, text);
+                    }
+
+                    listItem.appendChild(clone);
                     messageList.appendChild(listItem);
                 }
             }
         }
+    }
+
+    async function playAudioResponse(listItem, text) {
+        const response = await fetch(`/text2speech`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ text })
+        });
+        if (!response.ok) {
+            throw new Error(`Cannot convert text to speech! Status: ${response.status}`);
+        }
+        const res = await response.json();
+        const audio = listItem.querySelector('audio');
+        audio.setAttribute('src', `/audio/${res.fileName}`);
+        audio.play();
     }
 });

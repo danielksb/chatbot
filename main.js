@@ -68,31 +68,34 @@ app.post('/speech2text', upload.single('audio'), async (req, res) => {
 // Endpoint to chat with the model
 app.post('/chat', upload.single('audio'), async (req, res) => {
     const audioData = req.file.buffer;
+    let { threadId }  = req.body;
 
     if (!audioData) {
         return res.status(400).json({ error: 'No audio data provided' });
     }
 
-    
     try {
         const client = createOpenAIClient();
         const spokenText = await convertSpeechToText(client, audioData);
-        // TODO: add threadId to form data, if set then don't create a new thread
-        const thread = await client.beta.threads.create();
-        console.debug("DEBUG thread %s", thread.id);
+        if (!threadId) {
+            const thread = await client.beta.threads.create();
+            console.debug("DEBUG thread %s", thread.id);
+            threadId = thread.id;
+        }
+        
         await client.beta.threads.messages.create(
-            thread.id,
+            threadId,
             {
             role: "user",
             content: spokenText
         });
         const run = await client.beta.threads.runs.create(
-            thread.id,
+            threadId,
             {
                 assistant_id: 'asst_XT9Gx9YxcqQCFR30bvsDFDd4'
             }
         );
-        res.status(200).json({ text: spokenText, threadId: thread.id, runId: run.id });
+        res.status(200).json({ text: spokenText, threadId: threadId, runId: run.id });
     } catch (error) {
         console.error("ERROR", error);
         return res.status(500).json({ error: 'Internal Server Error' });

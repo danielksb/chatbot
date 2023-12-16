@@ -1,5 +1,14 @@
 document.addEventListener('DOMContentLoaded', function () {
+    /**
+     * @type {MediaRecorder|undefined}
+     */
     let recorder;
+
+    /** 
+     * OpenAI ThreadId
+     * @type {string|null}
+     */
+    let currentThreadId = null;
 
     const recordButton = document.getElementById('recordButton');
     const messageList = document.getElementById('messageList');
@@ -24,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             const response = await sendAudioData(audioBlob);
                             const threadId = response.threadId;
                             const runId = response.runId;
+                            currentThreadId = threadId;
                             await waitForRunComplete(threadId, runId);
                             await retrieveAndDisplayMessages(threadId);
                         } catch(error) {
@@ -50,6 +60,9 @@ document.addEventListener('DOMContentLoaded', function () {
     async function sendAudioData(audioBlob) {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recorded_audio.wav');
+        if (currentThreadId) {
+            formData.append('threadId', currentThreadId);
+        }
 
         const response = await fetch('/chat', {
             method: 'POST',

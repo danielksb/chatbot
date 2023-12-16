@@ -123,14 +123,17 @@ document.addEventListener('DOMContentLoaded', function () {
         messageList.innerHTML = '';
 
         // Append new messages to the list
-        for (let msg of messages.data) {
+        for (let i = 0; i < messages.data.length; i++) {
+            const msg = messages.data[i];
             const role = msg.role;
+            const firstMsg = i === 0;
             for (let content of msg.content) {
                 if (content.type === "text") {
                     const text = content.text.value;
                     const listItem = document.createElement('li');
 
-                    const templateName = role;
+                    const withAudio = firstMsg && role === 'assistant';
+                    const templateName = withAudio ? 'chatEntryAudio' : 'chatEntry';
                     const template = document.getElementById(templateName);
                     const clone = template.content.cloneNode(true);
                     const roleNode = clone.querySelector('b');
@@ -140,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     const textNode = document.createTextNode(text);
                     paragraphNode.appendChild(textNode);
 
-                    if (role === 'assistant') {
+                    if (withAudio) {
                         playAudioResponse(listItem, text);
                     }
 
@@ -165,6 +168,5 @@ document.addEventListener('DOMContentLoaded', function () {
         const res = await response.json();
         const audio = listItem.querySelector('audio');
         audio.setAttribute('src', `/audio/${res.fileName}`);
-        audio.play();
     }
 });

@@ -30,16 +30,16 @@ document.addEventListener('DOMContentLoaded', function () {
                         // Send the audio data to the backend and handle response
                         try {
                             const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                            const response = await sendAudioData(audioBlob);
+                            const response = await sendAudioData(audioBlob, currentThreadId);
                             const threadId = response.threadId;
                             const runId = response.runId;
                             currentThreadId = threadId;
                             await waitForRunComplete(threadId, runId);
                             await retrieveAndDisplayMessages(threadId);
-                        } catch(error) {
+                        } catch (error) {
                             console.error('Error handling audio data:', error);
                         }
-                        
+
                         // Reset recorder and audioChunks
                         recorder = null;
                     };
@@ -56,12 +56,17 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Function to send audio data to the backend
-    async function sendAudioData(audioBlob) {
+    /**
+     * Send the user message to the backend.
+     * @param {Blob} audioBlob recorded audio data
+     * @param {string|null} threadId threadId, if null a new conversation is started
+     * @returns {Promise<{spokenText: string, threadId: string, runId: string}>} conversation information
+     */ 
+    async function sendAudioData(audioBlob, threadId) {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recorded_audio.wav');
-        if (currentThreadId) {
-            formData.append('threadId', currentThreadId);
+        if (threadId) {
+            formData.append('threadId', threadId);
         }
 
         const response = await fetch('/chat', {
@@ -74,10 +79,19 @@ document.addEventListener('DOMContentLoaded', function () {
         return await response.json();
     }
 
+    /**
+     * Sleep for a certain amount of time
+     * @param {number} ms amount of milliseconds to sleep
+     */
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    /**
+     * Waits for a message to be processed by the LLM. This is process is called a "run".
+     * @param {string} threadId id of the current thread
+     * @param {string} runId id of the current run
+     */
     async function waitForRunComplete(threadId, runId) {
         let run = await retrieveRun(threadId, runId);
         while (run.status !== 'completed') {
@@ -85,8 +99,15 @@ document.addEventListener('DOMContentLoaded', function () {
             run = await retrieveRun(threadId, runId);
             console.debug(`run status for ${threadId}/${runId}: %s`, run.status);
         }
-    } 
+    }
 
+    /**
+     * Retrieves information about the current "run".
+     * Can be used to check if a response was already created by the LLM.
+     * @param {string} threadId id of the current thread
+     * @param {string} runId id of the current run
+     * @returns {Promise<{status: string}>} status information about the given run
+     */
     async function retrieveRun(threadId, runId) {
         try {
             const response = await fetch(`/messages/${threadId}/${runId}`, {
@@ -101,6 +122,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    /**
+     * Retrieves all messages in the current conversation and displays the messages on the page.
+     * @param {string} threadId id of the current thread
+     */
     async function retrieveAndDisplayMessages(threadId) {
         try {
             const response = await fetch(`/messages/${threadId}`, {
@@ -117,7 +142,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Function to update the message list in the UI
+    /**
+     * Recreated the messages on the page
+     */
     async function updateMessageList(messages) {
         // Clear existing messages
         messageList.innerHTML = '';
@@ -154,6 +181,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    /**
+     * Creates an audio element which will autoplay a text message.
+     * This function is used to make the LLM response audible.
+     * @param {HTMLLIElement} listItem HTML element the audio element should be attached on
+     * @param {string} text text for which an audio element is created
+     */
     async function playAudioResponse(listItem, text) {
         const response = await fetch(`/text2speech`, {
             method: 'POST',

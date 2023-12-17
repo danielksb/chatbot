@@ -25,47 +25,11 @@ app.use('/audio', express.static(tempDir));
 const storage = multer.memoryStorage(); // Store files in memory
 const upload = multer({ storage: storage });
 
-// Endpoint to receive and store audio data
-app.post('/upload', upload.single('audio'), (req, res) => {
-    const audioData = req.file.buffer;
 
-    if (!audioData) {
-        return res.status(400).json({ error: 'No audio data provided' });
-    }
-
-    const fileName = `audio_${Date.now()}.wav`;
-    const filePath = path.join(tempDir, fileName);
-
-    fs.writeFile(filePath, audioData, 'binary', (err) => {
-        if (err) {
-            console.error('Error writing audio file:', err);
-            return res.status(500).json({ error: 'Internal Server Error' });
-        }
-
-        console.log('Audio file saved:', filePath);
-        res.status(201).json({ success: true });
-    });
-});
-
-// Endpoint to convert audio data to text
-app.post('/speech2text', upload.single('audio'), async (req, res) => {
-    const audioData = req.file.buffer;
-
-    if (!audioData) {
-        return res.status(400).json({ error: 'No audio data provided' });
-    }
-
-    try {
-        const client = createOpenAIClient();
-        const spokenText = await convertSpeechToText(client, audioData);
-        res.status(200).json({ text: spokenText });
-    } catch (error) {
-        console.error("ERROR", error);
-        return res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
-// Endpoint to chat with the model
+// Endpoint to chat with the model 
+// The endpoint expects form data with two fields:
+// - 'audio' containing an audio recording with the spoken words by the user
+// - 'threadId' optional threadId of the conversation, if no threadId is given a new thread is created
 app.post('/chat', upload.single('audio'), async (req, res) => {
     const audioData = req.file.buffer;
     let { threadId }  = req.body;
@@ -102,6 +66,8 @@ app.post('/chat', upload.single('audio'), async (req, res) => {
     }
 });
 
+// Endpoint for retrieving the "run" object of a given thread.
+// This endpoint can be used by the client to actively wait for the LLM to finish it's response.
 app.get('/messages/:threadId/:runId', async (req, res) => {
     const threadId = req.params.threadId;
     const runId = req.params.runId;
@@ -119,6 +85,7 @@ app.get('/messages/:threadId/:runId', async (req, res) => {
     }
 });
 
+// Endpoint for retrieving all messages of a given threadId
 app.get('/messages/:threadId', async (req, res) => {
     const threadId = req.params.threadId;
     try {
@@ -133,6 +100,7 @@ app.get('/messages/:threadId', async (req, res) => {
     }
 });
 
+// Endpoint for converting a text message to an audio file.
 app.post('/text2speech', async (req, res) => {
     const { text } = req.body;
     if (!text) {
